@@ -25,8 +25,10 @@
 16. npm run dev
 
 17. <img width="1258" height="543" alt="image" src="https://github.com/user-attachments/assets/b65dff06-fa74-4448-805f-b52df12233db" />
-18. <img width="1258" height="543" alt="image" src="https://github.com/user-attachments/assets/595e3f40-b3e8-4064-a941-cb06f08871f4" />
+18. <img width="1813" height="2135" alt="image" src="https://github.com/user-attachments/assets/839a5c3e-3e1a-4eb8-88b6-f87b5ffd39a0" />
+
 19. <img width="1827" height="1996" alt="image" src="https://github.com/user-attachments/assets/a45902eb-92d4-466e-94d5-19f0291f45e4" />
+
 
 
 
