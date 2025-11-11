@@ -45,11 +45,31 @@ def get_historical_data(symbol, start_date, end_date):
     df.drop('_id', axis=1, inplace=True)
     return df[['open', 'high', 'low', 'close', 'volume']]
 
-def store_forecasts(symbol, horizon, model_type, forecasts):
-    forecasts_coll = db['forecasts']
-    for forecast in forecasts:
-        forecast['created_at'] = datetime.now().isoformat()
-    forecasts_coll.insert_many(forecasts)
+def store_forecasts(symbol, horizon, model_id, forecasts):
+    try:
+        forecasts_coll = db['forecasts']
+        
+        # Make a COPY to avoid mutating original
+        docs_to_insert = []
+        for f in forecasts:
+            doc = f.copy()  # Don't modify original
+            doc.update({
+                'symbol': symbol,
+                'horizon': horizon,
+                'model_id': model_id
+            })
+            docs_to_insert.append(doc)
+        
+        # Insert without returning _id into original list
+        result = forecasts_coll.insert_many(docs_to_insert)
+        
+        # Optional: log IDs, but NEVER modify `forecasts`
+        logger.info(f"Stored {len(result.inserted_ids)} forecasts")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Failed to store forecasts: {e}")
+        raise
     
 # Add these portfolio functions to your db.py
 

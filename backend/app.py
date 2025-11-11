@@ -1,21 +1,53 @@
+# ADD THIS AT THE TOP OF app.py (after other imports)
+from bson import ObjectId
+from datetime import datetime
+import json
+
+# ADD THIS CLASS ANYWHERE BEFORE app = Flask(__name__)
+class JSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, ObjectId):
+            return str(o)
+        if isinstance(o, datetime):
+            return o.isoformat()
+        return super().default(o)
+
+import os
 from db import db  # Add this if not already there
 from flask_cors import CORS
 from flask import Flask, jsonify, request
-from models import forecast_arima, forecast_lstm, ensemble_forecast
+from enhanced_models import adaptive_forecast_arima, adaptive_forecast_lstm, adaptive_ensemble_forecast
 from db import get_instruments, get_historical_data, store_historical_data, store_forecasts
 from utils import fetch_data_from_yfinance
-from adaptive_learning import adaptive_manager
+from enhanced_adaptive_learning import enhanced_adaptive_manager
+from continuous_monitoring import monitoring_system
 import pandas as pd
 from datetime import datetime, timedelta
 import logging
 import yfinance as yf
 import traceback
+import time
+import threading
+import logging
+
+# In app.py, add this after the imports and before the routes
+import os
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
+# Create necessary directories on startup
+os.makedirs("saved_models", exist_ok=True)
+logger.info("✅ saved_models directory created/verified")
+
 app = Flask(__name__)
+# ADD THIS LINE AFTER app = Flask(__name__)
+app.json_encoder = JSONEncoder
+
 # Configure CORS properly
 CORS(app, resources={
     r"/*": {
@@ -93,6 +125,80 @@ def get_historical_data_endpoint(symbol):
             logger.info("✅ Data stored in database")
         except Exception as e:
             logger.warning(f"⚠️ Could not store data in database: {str(e)}")
+
+        # 🚀 AUTOMATIC ADAPTIVE LEARNING TRIGGERS - ADD THIS SECTION
+        try:
+            if historical_data is not None and not historical_data.empty:
+                logger.info(f"🔄 Checking adaptive learning triggers for {symbol_clean}")
+                
+                if len(historical_data) > 30:  # Only if we have sufficient data
+                    close_prices = historical_data['Close'] if 'Close' in historical_data.columns else historical_data['close']
+                    
+                    # Convert to pandas Series if needed
+                    if isinstance(close_prices, pd.Series):
+                        price_series = close_prices
+                    else:
+                        price_series = pd.Series(close_prices.values, index=historical_data.index)
+                    
+                    logger.info(f"📊 Price series prepared: {len(price_series)} points")
+                    
+                    # 1. INCREMENTAL UPDATE TRIGGER
+                    latest_model = enhanced_adaptive_manager.get_latest_model_info(symbol_clean, 'lstm')
+                    if latest_model:
+                        # Use recent data for incremental learning (last 5-7 days)
+                        recent_data = price_series.tail(7)
+                        if len(recent_data) >= 5:
+                            logger.info(f"🔄 Triggering incremental LSTM update for {symbol_clean}")
+                            try:
+                                new_version = enhanced_adaptive_manager.incremental_lstm_update(
+                                    symbol_clean, recent_data, latest_model['version_id']
+                                )
+                                if new_version:
+                                    logger.info(f"✅ Incremental update successful: {new_version}")
+                                else:
+                                    logger.warning("⚠️ Incremental update returned no new version")
+                            except Exception as inc_error:
+                                logger.warning(f"⚠️ Incremental update failed: {inc_error}")
+                    
+                    # 2. SCHEDULED RETRAINING TRIGGER
+                    logger.info(f"🔄 Checking scheduled retraining for {symbol_clean}")
+                    try:
+                        retrain_result = enhanced_adaptive_manager.scheduled_retraining(symbol_clean, price_series)
+                        if retrain_result:
+                            logger.info(f"✅ Scheduled retraining triggered: {retrain_result}")
+                    except Exception as retrain_error:
+                        logger.warning(f"⚠️ Scheduled retraining check failed: {retrain_error}")
+                    
+                    # 3. ROLLING WINDOW REGRESSION UPDATE
+                    logger.info(f"🔄 Updating rolling window regression for {symbol_clean}")
+                    try:
+                        rolling_predictions = enhanced_adaptive_manager.rolling_window_regression(symbol_clean, price_series)
+                        if rolling_predictions:
+                            logger.info(f"✅ Rolling window updated: {len(rolling_predictions)} predictions")
+                    except Exception as rolling_error:
+                        logger.warning(f"⚠️ Rolling window update failed: {rolling_error}")
+                    
+                    # 4. PERFORMANCE DEGRADATION CHECK
+                    logger.info(f"🔄 Checking for performance degradation for {symbol_clean}")
+                    try:
+                        needs_retrain = enhanced_adaptive_manager.check_retraining_needed(symbol_clean, 'lstm')
+                        if needs_retrain:
+                            logger.warning(f"🚨 Performance degradation detected for {symbol_clean}, retraining recommended")
+                            # Auto-trigger retraining if severe degradation
+                            if len(price_series) > 100:  # Only if we have enough data
+                                enhanced_adaptive_manager.retrain_model(symbol_clean, price_series, 'lstm')
+                                logger.info(f"✅ Auto-retraining completed for {symbol_clean}")
+                    except Exception as perf_error:
+                        logger.warning(f"⚠️ Performance check failed: {perf_error}")
+                    
+                    logger.info(f"✅ All adaptive learning triggers completed for {symbol_clean}")
+                else:
+                    logger.info(f"⏸️ Insufficient data for adaptive learning: {len(historical_data)} points")
+                    
+        except Exception as adaptive_error:
+            logger.error(f"❌ Adaptive learning triggers failed: {adaptive_error}")
+            logger.error(traceback.format_exc())
+        # END OF ADAPTIVE LEARNING TRIGGERS
 
         if not isinstance(historical_data, pd.DataFrame):
             historical_data = pd.DataFrame(historical_data)
@@ -218,19 +324,27 @@ def generate_forecast_endpoint():
         if len(series) < 10:
             return jsonify({'error': 'Insufficient historical data for forecasting'}), 400
 
-        logger.info(f"🤖 Generating forecast using model: {model_id}")
-        
+        # WITH THIS:
+        logger.info(f"🤖 Generating adaptive forecast using model: {model_id}")
+
+        # Use adaptive learning system for all forecasts
         if 'arima' in model_id.lower() or model_id == '1':
-            predictions = forecast_arima(series, horizon_hours)
+            predictions, model_used = enhanced_adaptive_manager.adaptive_forecast(
+                symbol_clean, series, horizon_hours, use_ensemble=False
+            )
             model_name = 'ARIMA'
         elif 'lstm' in model_id.lower() or model_id == '2':
-            predictions = forecast_lstm(series, horizon_hours) 
+            predictions, model_used = enhanced_adaptive_manager.adaptive_forecast(
+                symbol_clean, series, horizon_hours, use_ensemble=False
+            )
             model_name = 'LSTM'
         else:
-            arima_pred = forecast_arima(series, horizon_hours)
-            lstm_pred = forecast_lstm(series, horizon_hours)
-            predictions = ensemble_forecast(arima_pred, lstm_pred)
+            predictions, model_used = enhanced_adaptive_manager.adaptive_forecast(
+                symbol_clean, series, horizon_hours, use_ensemble=True
+            )
             model_name = 'Ensemble'
+
+        logger.info(f"✅ Adaptive forecast generated using: {model_used}")
 
         last_date = historical_df.index[-1] if hasattr(historical_df.index, '__len__') else datetime.now()
         future_dates = [last_date + timedelta(hours=i+1) for i in range(horizon_hours)]
@@ -256,12 +370,15 @@ def generate_forecast_endpoint():
 
         try:
             store_forecasts(symbol_clean, horizon_hours, model_id, forecasts)
-            logger.info(f"✅ Forecasts stored in database")
+            logger.info(f"Forecasts stored in database")
         except Exception as e:
-            logger.warning(f"⚠️ Could not store forecasts in database: {str(e)}")
+            logger.warning(f"Could not store forecasts in database: {str(e)}")
+            # CONTINUE — don't fail the API
 
-        logger.info(f"✅ Successfully generated {len(forecasts)} forecasts")
-        return jsonify(forecasts)
+        logger.info(f"Successfully generated {len(forecasts)} forecasts")
+
+        # forecasts is CLEAN → no ObjectId
+        return jsonify(forecasts)  # ← NOW SAFE
 
     except Exception as e:
         logger.error(f"❌ Error generating forecast: {str(e)}")
@@ -464,55 +581,303 @@ def health_check():
         'timestamp': datetime.now().isoformat(),
         'service': 'FinTech Forecaster API'
     })
-    
-    
 
-# Add these routes to your app.py
-
-
-# Add these imports to your app.py
-from adaptive_learning import AdaptiveLearningManager
-
-# Then add these routes (make sure they're in your app.py):
-@app.route('/model/retrain', methods=['POST'])
-def retrain_model_endpoint():
-    """Trigger model retraining based on recent performance"""
+# ADAPTIVE LEARNING ROUTES
+@app.route('/model/adaptive-forecast', methods=['POST'])
+def adaptive_forecast_endpoint():
+    """Generate forecast using adaptive learning system"""
     try:
         data = request.get_json()
         symbol = data.get('symbol')
-        model_type = data.get('model_type', 'arima')
+        horizon = data.get('horizon', 24)
         
-        # For now, just return success since we don't have full adaptive learning yet
+        if not symbol:
+            return jsonify({'error': 'Symbol is required'}), 400
+
+        # Fetch historical data
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
+        
+        ticker = yf.Ticker(symbol)
+        historical_df = ticker.history(start=start_date, end=end_date, interval='1d')
+        
+        if historical_df.empty:
+            return jsonify({'error': 'No historical data available'}), 404
+
+        series = historical_df['Close'].dropna()
+        
+        # Use adaptive forecasting
+        forecast, model_used = enhanced_adaptive_manager.adaptive_forecast(
+            symbol, series, horizon, use_ensemble=True
+        )
+        
+        # Prepare forecast results
+        last_date = historical_df.index[-1]
+        future_dates = [last_date + timedelta(hours=i+1) for i in range(horizon)]
+        
+        forecasts = []
+        for i, (date, pred) in enumerate(zip(future_dates, forecast)):
+            confidence_margin = pred * 0.02
+            
+            forecast_data = {
+                'id': f"adaptive-{symbol}-{i}",
+                'instrument_id': symbol,
+                'model_id': f"adaptive_{model_used}",
+                'forecast_timestamp': datetime.now().isoformat(),
+                'target_timestamp': date.isoformat(),
+                'horizon_hours': horizon,
+                'predicted_price': float(pred),
+                'confidence_lower': float(pred - confidence_margin),
+                'confidence_upper': float(pred + confidence_margin),
+                'actual_price': None,
+                'created_at': datetime.now().isoformat()
+            }
+            forecasts.append(forecast_data)
+
+        # Store forecasts
+        store_forecasts(symbol, horizon, f"adaptive_{model_used}", forecasts)
+
+        return jsonify({
+            'forecasts': forecasts,
+            'model_used': model_used,
+            'adaptive_system': True
+        })
+
+    except Exception as e:
+        logger.error(f"Error in adaptive forecast: {str(e)}")
+        return jsonify({'error': f'Adaptive forecast failed: {str(e)}'}), 500
+
+@app.route('/model/performance-history/<symbol>', methods=['GET'])  # CHANGED NAME
+def get_model_performance_history_endpoint(symbol):  # CHANGED NAME
+    """Get comprehensive model performance history"""
+    try:
+        performance_data = {}
+        
+        for model_type in ['arima', 'lstm', 'rolling_window', 'sliding_context']:
+            performance_data[model_type] = enhanced_adaptive_manager.get_performance_history(
+                symbol, model_type, days=30
+            )
+        
+        return jsonify(performance_data)
+        
+    except Exception as e:
+        logger.error(f"Error fetching performance data: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/model/versions/<symbol>', methods=['GET'])
+def get_model_versions_endpoint(symbol):
+    """Get all model versions for a symbol"""
+    try:
+        versions = list(db['model_versions'].find(
+            {'training_data_range.symbol': symbol},
+            {'_id': 0}
+        ).sort('created_at', -1))
+        
+        return jsonify(versions)
+        
+    except Exception as e:
+        logger.error(f"Error fetching model versions: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/model/retrain', methods=['POST'])
+def retrain_model_endpoint():
+    """Trigger model retraining with enhanced adaptive learning"""
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol')
+        model_type = data.get('model_type', 'ensemble')
+        
+        if not symbol:
+            return jsonify({'error': 'Symbol is required'}), 400
+
+        # Fetch latest data
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
+        
+        ticker = yf.Ticker(symbol)
+        historical_df = ticker.history(start=start_date, end=end_date, interval='1d')
+        
+        if historical_df.empty:
+            return jsonify({'error': 'No historical data available'}), 404
+
+        series = historical_df['Close'].dropna()
+        
+        # Perform retraining
+        if model_type == 'lstm':
+            version_id = enhanced_adaptive_manager.retrain_model(symbol, series, 'lstm')
+        elif model_type == 'adaptive':
+            # Use adaptive ensemble retraining
+            forecast, model_used = enhanced_adaptive_manager.adaptive_forecast(
+                symbol, series, 24, use_ensemble=True
+            )
+            version_id = f"adaptive_ensemble_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        else:
+            # Complete retraining of all models
+            enhanced_adaptive_manager.retrain_model(symbol, series, 'lstm')
+            version_id = f"full_retrain_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
         return jsonify({
             'retrained': True,
-            'message': f'{model_type.upper()} model retraining triggered for {symbol}'
+            'message': f'{model_type.upper()} model retraining completed for {symbol}',
+            'version_id': version_id,
+            'timestamp': datetime.now().isoformat()
         })
             
     except Exception as e:
         logger.error(f"Error in model retraining: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/model/performance/<symbol>', methods=['GET'])
-def get_model_performance_endpoint(symbol):
-    """Get model performance history for a symbol"""
+@app.route('/model/incremental-update', methods=['POST'])
+def incremental_update_endpoint():
+    """Trigger incremental model update with new data"""
     try:
-        # For now, return mock data
-        mock_performance = [
-            {
-                'symbol': symbol,
-                'model_type': 'arima',
-                'timestamp': datetime.now().isoformat(),
-                'metrics': {
-                    'mae': 2.1,
-                    'rmse': 3.4,
-                    'mape': 1.8
-                }
-            }
-        ]
-        return jsonify(mock_performance)
+        data = request.get_json()
+        symbol = data.get('symbol')
+        model_type = data.get('model_type', 'lstm')
+        
+        if not symbol:
+            return jsonify({'error': 'Symbol is required'}), 400
+
+        # Fetch very recent data for incremental learning
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)  # Only last 7 days
+        
+        ticker = yf.Ticker(symbol)
+        recent_df = ticker.history(start=start_date, end=end_date, interval='1d')
+        
+        if recent_df.empty:
+            return jsonify({'error': 'No recent data available'}), 404
+
+        series = recent_df['Close'].dropna()
+        
+        # Get latest model version
+        latest_model = enhanced_adaptive_manager.get_latest_model_info(symbol, model_type)
+        
+        if not latest_model:
+            return jsonify({'error': f'No existing {model_type} model found for incremental update'}), 404
+        
+        # Perform incremental update
+        if model_type == 'lstm':
+            new_version_id = enhanced_adaptive_manager.incremental_lstm_update(
+                symbol, series, latest_model['version_id']
+            )
+            
+            if new_version_id:
+                return jsonify({
+                    'updated': True,
+                    'message': f'LSTM model incrementally updated for {symbol}',
+                    'old_version': latest_model['version_id'],
+                    'new_version': new_version_id
+                })
+            else:
+                return jsonify({'error': 'Incremental update failed'}), 500
+        
+        return jsonify({'error': f'Incremental update not supported for {model_type}'}), 400
+            
     except Exception as e:
-        logger.error(f"Error fetching performance data: {str(e)}")
+        logger.error(f"Error in incremental update: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+# MONITORING ROUTES
+@app.route('/monitoring/errors/<symbol>', methods=['GET'])
+def get_prediction_errors_endpoint(symbol):
+    """Get prediction errors for a symbol"""
+    try:
+        errors_coll = db['prediction_metrics']
+        
+        # Get recent prediction errors
+        cutoff_date = datetime.now() - timedelta(days=30)
+        errors = list(errors_coll.find({
+            'symbol': symbol,
+            'timestamp': {'$gte': cutoff_date.isoformat()}
+        }, {'_id': 0}).sort('timestamp', -1).limit(100))
+        
+        # Format errors for frontend
+        formatted_errors = []
+        for error in errors:
+            if 'predictions' in error and 'actuals' in error:
+                for pred, actual in zip(error['predictions'], error['actuals']):
+                    formatted_errors.append({
+                        'timestamp': error['timestamp'],
+                        'predicted': pred,
+                        'actual': actual,
+                        'error': actual - pred
+                    })
+        
+        return jsonify(formatted_errors)
+        
+    except Exception as e:
+        logger.error(f"Error getting prediction errors: {str(e)}")
+        return jsonify([])
+
+@app.route('/monitoring/performance/<symbol>', methods=['GET'])
+def get_monitoring_performance_endpoint(symbol):  # CHANGED NAME
+    """Get comprehensive model performance for a symbol"""
+    try:
+        performance_summary = monitoring_system.get_performance_summary(symbol)
+        return jsonify(performance_summary)
+        
+    except Exception as e:
+        logger.error(f"Error getting model performance: {str(e)}")
+        return jsonify({})
+
+@app.route('/monitoring/alerts', methods=['GET'])
+def get_performance_alerts_endpoint():
+    """Get active performance alerts"""
+    try:
+        alerts = monitoring_system.get_active_alerts()
+        
+        # Convert ObjectId to string for JSON serialization
+        for alert in alerts:
+            alert['id'] = str(alert['_id'])
+            del alert['_id']
+            
+        return jsonify(alerts)
+        
+    except Exception as e:
+        logger.error(f"Error getting performance alerts: {str(e)}")
+        return jsonify([])
+
+@app.route('/monitoring/alerts/<alert_id>/resolve', methods=['POST'])
+def resolve_alert_endpoint(alert_id):
+    """Mark an alert as resolved"""
+    try:
+        success = monitoring_system.resolve_alert(alert_id)
+        
+        return jsonify({'success': success})
+        
+    except Exception as e:
+        logger.error(f"Error resolving alert: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/monitoring/metrics/<symbol>', methods=['GET'])
+def get_metrics_history_endpoint(symbol):
+    """Get metrics history for a symbol"""
+    try:
+        model_type = request.args.get('model_type')
+        
+        metrics = monitoring_system.get_metrics_history(symbol, model_type)
+        return jsonify(metrics)
+        
+    except Exception as e:
+        logger.error(f"Error getting metrics history: {str(e)}")
+        return jsonify([])
+
+# Background task for continuous evaluation
+def background_continuous_evaluation():
+    """Background task to continuously evaluate predictions"""
+    while True:
+        try:
+            # This would typically check for new ground-truth data
+            # and evaluate recent predictions
+            time.sleep(3600)  # Run every hour
+        except Exception as e:
+            logger.error(f"Error in continuous evaluation: {str(e)}")
+            time.sleep(300)  # Wait 5 minutes on error
+
+# Start background thread (add this after app routes)
+eval_thread = threading.Thread(target=background_continuous_evaluation, daemon=True)
+eval_thread.start()
 
 if __name__ == '__main__':
     logger.info("🚀 Starting FinTech Forecaster API...")
