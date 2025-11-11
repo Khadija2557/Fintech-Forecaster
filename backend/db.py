@@ -2,8 +2,25 @@ from pymongo import MongoClient
 import pandas as pd
 from datetime import datetime
 
-client = MongoClient('mongodb://localhost:27017/')
-db = client['stock_forecast_db']
+import os
+from pymongo import MongoClient
+
+# Get MongoDB URI from environment with fallback
+MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/stock_forecast_db')
+
+try:
+    client = MongoClient(MONGODB_URI)
+    db = client['stock_forecast_db']
+    
+    # Test connection
+    client.admin.command('ping')
+    print("✅ Successfully connected to MongoDB")
+except Exception as e:
+    print(f"❌ MongoDB connection error: {e}")
+    raise
+
+# client = MongoClient('mongodb://localhost:27017/')
+# db = client['stock_forecast_db']
 
 def get_instruments():
     # Use real MongoDB data instead of mock data

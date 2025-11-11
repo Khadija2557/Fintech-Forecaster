@@ -20,7 +20,7 @@ import {
   Forecast,
   getModelPerformance,
   retrainModel
-} from '../lib/mongodb'; // REMOVED getPredictionErrors
+} from '../lib/mongodb';
 
 interface PortfolioDashboardProps {
   forecasts: Forecast[];
@@ -35,13 +35,11 @@ export default function PortfolioDashboard({ forecasts, selectedInstrument }: Po
   const [tradeSymbol, setTradeSymbol] = useState('');
   const [tradeQuantity, setTradeQuantity] = useState('');
   const [tradingSignals, setTradingSignals] = useState<any[]>([]);
-  const [modelPerformance, setModelPerformance] = useState<any[]>([]);
   const [retraining, setRetraining] = useState(false);
 
   useEffect(() => {
     loadPortfolioData();
     generateTradingSignals();
-    loadModelPerformance();
   }, [forecasts, selectedInstrument]);
 
   const loadPortfolioData = async () => {
@@ -76,17 +74,6 @@ export default function PortfolioDashboard({ forecasts, selectedInstrument }: Po
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadModelPerformance = async () => {
-    if (!selectedInstrument) return;
-    
-    try {
-      const performanceData = await getModelPerformance(selectedInstrument);
-      setModelPerformance(performanceData);
-    } catch (error) {
-      console.error('Error loading model performance:', error);
     }
   };
 
@@ -190,17 +177,11 @@ export default function PortfolioDashboard({ forecasts, selectedInstrument }: Po
     try {
       const result = await retrainModel(selectedInstrument);
       alert(result.message);
-      await loadModelPerformance();
     } catch (error: any) {
       alert(`Retraining failed: ${error.message || 'Unknown error'}`);
     } finally {
       setRetraining(false);
     }
-  };
-
-  const getLatestModelMetrics = () => {
-    if (modelPerformance.length === 0) return null;
-    return modelPerformance[0];
   };
 
   const calculatePortfolioGrowth = () => {
@@ -216,8 +197,6 @@ export default function PortfolioDashboard({ forecasts, selectedInstrument }: Po
       </div>
     );
   }
-
-  const latestMetrics = getLatestModelMetrics();
 
   return (
     <div className="space-y-6">
@@ -280,121 +259,68 @@ export default function PortfolioDashboard({ forecasts, selectedInstrument }: Po
         </div>
       )}
 
-      {/* Portfolio Performance & Model Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Portfolio Performance */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-400" />
-            Portfolio Performance
-          </h3>
-          
-          {performance && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-lg p-4 border border-green-500/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-4 h-4 text-green-400" />
-                  <div className="text-sm text-slate-400">Total Value</div>
-                </div>
-                <div className="text-xl font-bold text-white">
-                  ${performance.current_value.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                </div>
+      {/* Portfolio Performance */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-blue-400" />
+          Portfolio Performance
+        </h3>
+        
+        {performance && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-lg p-4 border border-green-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-4 h-4 text-green-400" />
+                <div className="text-sm text-slate-400">Total Value</div>
               </div>
+              <div className="text-xl font-bold text-white">
+                ${performance.current_value.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}
+              </div>
+            </div>
 
-              <div className={`rounded-lg p-4 border ${
-                calculatePortfolioGrowth() >= 0 
-                  ? 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-green-500/20' 
-                  : 'bg-gradient-to-br from-red-500/10 to-rose-500/10 border-red-500/20'
+            <div className={`rounded-lg p-4 border ${
+              calculatePortfolioGrowth() >= 0 
+                ? 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-green-500/20' 
+                : 'bg-gradient-to-br from-red-500/10 to-rose-500/10 border-red-500/20'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                {calculatePortfolioGrowth() >= 0 ? 
+                  <ArrowUpCircle className="w-4 h-4 text-green-400" /> : 
+                  <ArrowDownCircle className="w-4 h-4 text-red-400" />
+                }
+                <div className="text-sm text-slate-400">Portfolio Growth</div>
+              </div>
+              <div className={`text-xl font-bold ${
+                calculatePortfolioGrowth() >= 0 ? 'text-green-400' : 'text-red-400'
               }`}>
-                <div className="flex items-center gap-2 mb-2">
-                  {calculatePortfolioGrowth() >= 0 ? 
-                    <ArrowUpCircle className="w-4 h-4 text-green-400" /> : 
-                    <ArrowDownCircle className="w-4 h-4 text-red-400" />
-                  }
-                  <div className="text-sm text-slate-400">Portfolio Growth</div>
-                </div>
-                <div className={`text-xl font-bold ${
-                  calculatePortfolioGrowth() >= 0 ? 'text-green-400' : 'text-red-400'
-                }`}>
-                  {calculatePortfolioGrowth() >= 0 ? '+' : ''}{calculatePortfolioGrowth().toFixed(2)}%
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-lg p-4 border border-blue-500/20">
-                <div className="text-sm text-slate-400 mb-2">Cash Balance</div>
-                <div className="text-xl font-bold text-white">
-                  ${performance.cash_balance.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg p-4 border border-purple-500/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <Activity className="w-4 h-4 text-purple-400" />
-                  <div className="text-sm text-slate-400">Sharpe Ratio</div>
-                </div>
-                <div className="text-xl font-bold text-white">
-                  {performance.sharpe_ratio?.toFixed(2) || 'N/A'}
-                </div>
+                {calculatePortfolioGrowth() >= 0 ? '+' : ''}{calculatePortfolioGrowth().toFixed(2)}%
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Model Performance Metrics */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-            <Activity className="w-5 h-5 text-purple-400" />
-            Model Performance
-          </h3>
-          
-          {latestMetrics ? (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gradient-to-br from-orange-500/10 to-amber-500/10 rounded-lg p-4 border border-orange-500/20">
-                <div className="text-sm text-slate-400 mb-2">RMSE</div>
-                <div className="text-xl font-bold text-white">
-                  {latestMetrics.metrics?.rmse?.toFixed(4) || 'N/A'}
-                </div>
-                <div className="text-xs text-slate-400 mt-1">Root Mean Square Error</div>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-lg p-4 border border-blue-500/20">
-                <div className="text-sm text-slate-400 mb-2">MAE</div>
-                <div className="text-xl font-bold text-white">
-                  {latestMetrics.metrics?.mae?.toFixed(4) || 'N/A'}
-                </div>
-                <div className="text-xs text-slate-400 mt-1">Mean Absolute Error</div>
-              </div>
-
-              <div className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-lg p-4 border border-green-500/20">
-                <div className="text-sm text-slate-400 mb-2">MAPE</div>
-                <div className="text-xl font-bold text-white">
-                  {latestMetrics.metrics?.mape?.toFixed(2) || 'N/A'}%
-                </div>
-                <div className="text-xs text-slate-400 mt-1">Mean Absolute Percentage Error</div>
-              </div>
-
-              <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg p-4 border border-purple-500/20">
-                <div className="text-sm text-slate-400 mb-2">Last Update</div>
-                <div className="text-sm font-bold text-white">
-                  {latestMetrics.timestamp ? new Date(latestMetrics.timestamp).toLocaleDateString() : 'N/A'}
-                </div>
-                <div className="text-xs text-slate-400 mt-1">Model Evaluation</div>
+            <div className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-lg p-4 border border-blue-500/20">
+              <div className="text-sm text-slate-400 mb-2">Cash Balance</div>
+              <div className="text-xl font-bold text-white">
+                ${performance.cash_balance.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}
               </div>
             </div>
-          ) : (
-            <div className="bg-slate-800/30 rounded-lg p-6 border border-slate-700/50 text-center">
-              <AlertCircle className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-              <p className="text-slate-400">No model performance data available</p>
-              <p className="text-slate-500 text-sm">Generate forecasts to see performance metrics</p>
+
+            <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg p-4 border border-purple-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Activity className="w-4 h-4 text-purple-400" />
+                <div className="text-sm text-slate-400">Sharpe Ratio</div>
+              </div>
+              <div className="text-xl font-bold text-white">
+                {performance.sharpe_ratio?.toFixed(2) || 'N/A'}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Current Holdings */}
@@ -504,7 +430,7 @@ export default function PortfolioDashboard({ forecasts, selectedInstrument }: Po
           </div>
           <div className="bg-slate-700/50 rounded p-3">
             <div className="text-slate-400 mb-1">Performance Tracking</div>
-            <div className="text-cyan-400 font-semibold">{modelPerformance.length} Evaluations</div>
+            <div className="text-cyan-400 font-semibold">Real-time Analysis</div>
           </div>
           <div className="bg-slate-700/50 rounded p-3">
             <div className="text-slate-400 mb-1">Auto-Retraining</div>
