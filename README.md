@@ -23,10 +23,12 @@
 15. cd frontend
 16. npm run dev
 
-17. <img width="1258" height="543" alt="image" src="https://github.com/user-attachments/assets/b65dff06-fa74-4448-805f-b52df12233db" />
-18. <img width="1813" height="2135" alt="image" src="https://github.com/user-attachments/assets/839a5c3e-3e1a-4eb8-88b6-f87b5ffd39a0" />
+17. ![1](https://github.com/user-attachments/assets/82f36a20-8cf4-4b58-9846-9f4b1c75dc2b)
 
-19. <img width="1827" height="1996" alt="image" src="https://github.com/user-attachments/assets/a45902eb-92d4-466e-94d5-19f0291f45e4" />
+18. ![2](https://github.com/user-attachments/assets/4febac1f-ea84-459c-9486-83f36f8cef29)
+
+19. ![3](https://github.com/user-attachments/assets/e2908855-b97e-43ca-8ddf-236e67e938f5)
+
 
 
 
